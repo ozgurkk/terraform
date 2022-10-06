@@ -2,17 +2,33 @@
 
 # Nonprod- ResourceGroup - If created
 resource "azurerm_resource_group" "bbnonprod" {
-  count    = var.environment == "NRPD" ? 1 : 0
+#  count    = var.environment == "NRPD" ? 1 : 0
   name     = "bb-nprd-resources"
   location = var.resource_group_location
 }
 
 # Prod ResourceGroup
 resource "azurerm_resource_group" "bbprod" {
-  count    = var.environment == "PRD" ? 1 : 0
+#  count    = var.environment == "PRD" ? 1 : 0
   name     = "bb-prd-resources"
   location = var.resource_group_location
 }
+
+# ACR ResourceGroup
+resource "azurerm_resource_group" "commonresources" {
+  name     = "bb-common-resources"
+  location = var.resource_group_location
+}
+
+# Creating an ACR
+
+resource "azurerm_container_registry" "commonresources" {
+  name                = "bbsharedacr20221005ozgur"
+  resource_group_name = azurerm_resource_group.commonresources.name
+  location            = azurerm_resource_group.commonresources.location
+  sku                 = "Premium"
+}
+
 
 # Nonprod AKS Cluster
 resource "azurerm_kubernetes_cluster" "bbnonprod" {
@@ -50,6 +66,14 @@ resource "azurerm_kubernetes_cluster" "bbnonprod" {
   
 }
 
+#Bind ACR to nonprod cluster
+resource "azurerm_role_assignment" "bbnonprod" {
+  count                            = var.environment == "NPRD" ? 1 : 0
+  principal_id                     = azurerm_kubernetes_cluster.bbnonprod[count.index].kubelet_identity[0].object_id
+  role_definition_name             = "AcrPull"
+  scope                            = azurerm_container_registry.commonresources.id
+  skip_service_principal_aad_check = true
+}
 
 # Prod AKS Cluster
 resource "azurerm_kubernetes_cluster" "bbprod" {
@@ -84,6 +108,16 @@ resource "azurerm_kubernetes_cluster" "bbprod" {
   identity {
     type = "SystemAssigned"
   }
+}
+
+#Bind ACR to prod cluster
+resource "azurerm_role_assignment" "bbprod" {
+  count                            = var.environment == "PRD" ? 1 : 0
+  principal_id                     = azurerm_kubernetes_cluster.bbprod[count.index].kubelet_identity[0].object_id
+  role_definition_name             = "AcrPull"
+  scope                            = azurerm_container_registry.commonresources.id
+  skip_service_principal_aad_check = true
+
 }
 
 # Nonprod Userpool
